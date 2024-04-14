@@ -7,7 +7,7 @@ import time
 import serial
 
 # Open the camera (use 0 for the default camera)
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(2)
 port = "COM4"  # This will be different for various devices,COM port. keyboard.is_pressed('q') == False
 bluetooth = serial.Serial(port, 115200)  # Start communications with the bluetooth unit
 bluetooth.flushInput()  # This gives the bluetooth a little kick
@@ -31,9 +31,12 @@ def draw_curve_with_mouse_events(event, x, y, flags, params):
         if st == 0:  # to allow lines_arr to append for the first time
             lines_arr.append((x, y))
             st = 1
-        if (x - lines_arr[-1][0]) * 2 + (
-                y - lines_arr[-1][1]) * 2 > 50 * 2:  # to avoid data points which are too close to each other.
+        if (x - lines_arr[-1][0]) ** 2 + (
+                y - lines_arr[-1][1]) ** 2 > 50 ** 2:  # to avoid data points which are too close to each other.
             lines_arr.append((x, y))
+
+
+
 
     elif event == cv2.EVENT_LBUTTONUP and stop == 0:
         if (x - lines_arr[-1][0]) ** 2 + (y - lines_arr[-1][1]) ** 2 > 50 ** 2:
@@ -94,7 +97,7 @@ Ts = 0.1
 x_derivative = np.gradient(x_desired) / Ts
 y_derivative = np.gradient(y_desired) / Ts
 # v_desired = x_derivative * 0
-v_desired = np.sqrt(x_derivative * 2 + y_derivative * 2)
+v_desired = np.sqrt(x_derivative ** 2 + y_derivative ** 2)
 # plt.plot(np.linspace(0, 1, 60), v_desired)
 
 # Calculate the desired angular velocity based on the angle's derivative
@@ -136,8 +139,12 @@ def detect_color_and_get_coordinates(frame, lower_blue_color, upper_blue_color, 
 
     coordinates = []
 
-    red_mask = cv2.inRange(hsv_frame, lower_red_color, upper_red_color)
+    red_mask1 = cv2.inRange(hsv_frame, lower_red_color, upper_red_color)
 
+    lower_red_color_2 = np.array([345. // 2, 90, 160])
+    upper_red_color_2 = np.array([360. // 2, 240, 255])
+    red_mask2 = cv2.inRange(hsv_frame, lower_red_color_2, upper_red_color_2)
+    red_mask = cv2.bitwise_or(red_mask1, red_mask2)
     # cv2.imshow("r",red_mask)
     # cv2.waitKey(5)
     M = cv2.moments(red_mask)
@@ -187,12 +194,12 @@ def calculate_distance_angle_and_midpoint(coord1, coord2):
 
 
 # Blue color range
-lower_blue_color = np.array([180 // 2, 150, 150])
-upper_blue_color = np.array([210 // 2, 255, 255])
+lower_blue_color = np.array([205 // 2, 150, 50])
+upper_blue_color = np.array([230 // 2, 255, 220])
 
 # Red color range
-lower_red_color = np.array([340 // 2, 10, 200])
-upper_red_color = np.array([360 // 2, 140, 255])
+lower_red_color = np.array([0. // 2, 90, 180])
+upper_red_color = np.array([15. // 2, 240, 255])
 i = 0
 coordinates = []
 coordinates.append((0, 0))
@@ -203,6 +210,9 @@ aux = 0
 
 x = 0
 y = 0
+
+x_data = []
+y_data = []
 try:
     while True:
         start = time.time()
@@ -212,7 +222,7 @@ try:
         draw_points = (np.asarray([np.floor(x_d), np.floor(y_d)]).T).astype(
             np.int32)  # needs to be int32 and transposed
 
-        cv2.polylines(frame, [draw_points], False, (250, 250, 250))
+        cv2.polylines(frame, [draw_points], False, (250, 250, 250), 5)
         # cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)
         # cv2.circle(frame, (x + int(30*np.cos(phi)), y + int(30*np.sin(phi))), 3, (0, 255, 0), -1)
         # Detect the specified color in the frame and get coordinates
@@ -232,6 +242,8 @@ try:
         if angle != 'nan':
             phi = angle
             # print(angle)
+        x_data.append(x)
+        y_data.append(y)
         # print(x, y)
         # if x < 50 or y < 50:
         #     aux = 1
@@ -287,7 +299,15 @@ except KeyboardInterrupt:
     print("Program is interrupted!")
 
 bluetooth.write((str(0) + str('/') + str(0) + str('/')).encode())  # These need to be bytes not unicode
+draw_points = (np.asarray([np.floor(x_d), np.floor(y_d)]).T).astype(np.int32)  # needs to be int32 and transposed
 
+cv2.polylines(frame, [draw_points], False, (250, 250, 250), 5)
+
+draw_points = (np.asarray([np.floor(x_data), np.floor(y_data)]).T).astype(np.int32)  # needs to be int32 and transposed
+
+cv2.polylines(frame, [draw_points], False, (0, 250, 250), 5)
+cv2.imshow("Result", frame)
+cv2.waitKey()
 # Release the camera and close all OpenCV windows
 cap.release()
 cv2.destroyAllWindows()  # Converting the defined list into a NumPy array
