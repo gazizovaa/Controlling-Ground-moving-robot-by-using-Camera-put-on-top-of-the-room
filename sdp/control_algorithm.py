@@ -14,9 +14,9 @@ bluetooth.flushInput()  # This gives the bluetooth a little kick
 bluetooth.write((str(0) + str('/') + str(0) + str('/')).encode())  # These need to be bytes not unicode
 
 # Declare the variables
-Kx = 0.2
-K_phi = 0.3
-Ky = 0.15
+Kx = 0.4
+K_phi = 0.6
+Ky = 0.4
 a = 11.5 / 2
 st = 0  # st and stop are for keeping data points apart from each other so that it is not too dense
 # st is to allow lines_arr to append first time so that for the following
@@ -31,7 +31,7 @@ def draw_curve_with_mouse_events(event, x, y, flags, params):
         if st == 0:  # to allow lines_arr to append for the first time
             lines_arr.append((x, y))
             st = 1
-        if (x - lines_arr[-1][0]) ** 2 + (
+        if (x - lines_arr[-1][0]) * 2 + (
                 y - lines_arr[-1][1]) ** 2 > 50 ** 2:  # to avoid data points which are too close to each other.
             lines_arr.append((x, y))
 
@@ -97,7 +97,7 @@ Ts = 0.1
 x_derivative = np.gradient(x_desired) / Ts
 y_derivative = np.gradient(y_desired) / Ts
 # v_desired = x_derivative * 0
-v_desired = np.sqrt(x_derivative ** 2 + y_derivative ** 2)
+v_desired = np.sqrt(x_derivative * 2 + y_derivative * 2)
 # plt.plot(np.linspace(0, 1, 60), v_desired)
 
 # Calculate the desired angular velocity based on the angle's derivative
@@ -111,9 +111,14 @@ p2d = 0.0018 * 3  # converting pixel to real distance (m)
 # p2d = 1/50.
 # Function to find the control algorithm of the curved trajectory
 def closed_loop_control(Kx, Ky, K_phi, x, y, phi, x_desired, y_desired, phi_desired, v_desired, omega_desired):
+    Ferr = phi_desired - phi
+    if Ferr > np.pi:
+        Ferr = Ferr - 2 * np.pi
+    elif Ferr < -np.pi:
+        Ferr = Ferr + 2 * np.pi
     v = Kx * (np.cos(phi) * (x_desired - x) * p2d + np.sin(phi) * (y_desired - y) * p2d) + v_desired * p2d * (
-        np.cos((phi_desired - phi)))
-    omega = K_phi * np.sin((phi_desired - phi)) + Ky * p2d * v_desired * (
+        np.cos((Ferr)))
+    omega = K_phi * np.sin((Ferr)) + Ky * p2d * v_desired * (
             -np.sin(phi) * (x_desired - x) * p2d + np.cos(phi) * (y_desired - y) * p2d) + omega_desired
 
     return v, omega
@@ -210,7 +215,7 @@ aux = 0
 
 x = 0
 y = 0
-
+flag = 0  # For sharp corners on the path
 x_data = []
 y_data = []
 try:
@@ -244,6 +249,12 @@ try:
             # print(angle)
         x_data.append(x)
         y_data.append(y)
+        if (x - x_desired[i]) * 2 + (y - y_desired[i]) ** 2 > 70 ** 2:
+            K_phi = 0.1
+        elif (x - x_desired[i]) * 2 + (y - y_desired[i]) ** 2 > 35 ** 2:
+            K_phi = 0.3
+        else:
+            K_phi = 0.7
         # print(x, y)
         # if x < 50 or y < 50:
         #     aux = 1
@@ -259,10 +270,21 @@ try:
                                        v_desired[i],
                                        omega_desired[i])
 
-        if i < len(x_d) - 2:  # to continue until the end of path
-            i = i + 1
+        # Check if there is a sharp turn, if yes stop and turn to that direction and then continue
+        if K_phi == 0.7 and np.abs(phi_desired[i] - phi) > 0.85:
+            flag = 1
+
+        if flag == 1 and np.abs(phi_desired[i] - phi) > 0.15:
+            v = 0
+            omega = phi_desired[i] - phi
+        elif flag == 1 and np.abs(phi_desired[i] - phi) < 0.15:
+            flag = 0
         else:
-            break
+            if i < len(x_d) - 2:  # to continue until the end of path
+                i = i + 1
+            else:
+                break
+
         # Invoke the robot kinematics
         v_left, v_right = calc_wheels_velocities(v, omega, a)
         v_right = v_right * 60 / 50.
